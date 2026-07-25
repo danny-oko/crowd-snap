@@ -420,147 +420,155 @@ export default function CameraView() {
           {error}
         </div>
       ) : (
-        <div className="relative w-full h-full flex items-center justify-center">
-          <div
-            className={`relative overflow-hidden bg-neutral-900 transition-all duration-300 ${getAspectRatioClass()}`}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-            onPointerDown={handleVideoTap}
-          >
-            {isFlashing && (
-              <div className="absolute inset-0 bg-white z-30 transition-opacity duration-150" />
-            )}
-
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="absolute inset-0 w-full h-full object-cover transition-transform duration-75 pointer-events-none"
-              style={{
-                transform: `${mirrorTransform} ${zoomTransform}`,
-              }}
-            />
-
-            <div className="absolute top-6 right-6 z-20 flex flex-col items-end gap-2 pointer-events-auto">
-              <button
-                onClick={() => setShowSettings(!showSettings)}
-                className="w-10 h-10 flex items-center justify-center rounded-full bg-black/40 backdrop-blur-md border border-white/20 active:scale-90 transition"
-              >
-                <Settings className="w-5 h-5 text-white" />
-              </button>
-
-              {showSettings && (
-                <div className="flex flex-col gap-2 bg-black/60 backdrop-blur-md p-2 rounded-xl border border-white/20">
-                  {(["16:9", "4:3", "1:1"] as AspectRatio[]).map((ratio) => (
-                    <button
-                      key={ratio}
-                      onClick={() => {
-                        setAspectRatio(ratio);
-                        setShowSettings(false);
-                      }}
-                      className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
-                        aspectRatio === ratio
-                          ? "bg-white text-black"
-                          : "text-white hover:bg-white/20"
-                      }`}
-                    >
-                      {ratio}
-                    </button>
-                  ))}
-                </div>
+        <>
+          {/* Preview box — only this resizes with the aspect ratio */}
+          <div className="relative w-full h-full flex items-center justify-center">
+            <div
+              className={`relative overflow-hidden bg-neutral-900 transition-all duration-300 ${getAspectRatioClass()}`}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+              onPointerDown={handleVideoTap}
+            >
+              {isFlashing && (
+                <div className="absolute inset-0 bg-white z-30 transition-opacity duration-150" />
               )}
+
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="absolute inset-0 w-full h-full object-cover transition-transform duration-75 pointer-events-none"
+                style={{
+                  transform: `${mirrorTransform} ${zoomTransform}`,
+                }}
+              />
             </div>
+          </div>
 
-            {isRecording && (
-              <div className="absolute top-6 left-0 right-0 flex justify-center z-20 pointer-events-none">
-                <div className="bg-black/60 backdrop-blur-md px-4 py-1.5 rounded-full border border-red-500/30">
-                  <p className="text-xs font-bold text-red-500 animate-pulse tracking-wider">
-                    REC 00:
-                    {recordingSeconds < 10
-                      ? `0${recordingSeconds}`
-                      : recordingSeconds}{" "}
-                    / 01:00
-                  </p>
-                </div>
-              </div>
-            )}
+          {/* Overlays — anchored to the full screen, so they never shift with the ratio */}
 
-            <div className="absolute bottom-0 left-0 right-0 p-6 pb-12 flex flex-col items-center gap-6 z-10 bg-gradient-to-t from-black/80 via-black/40 to-transparent pointer-events-none">
-              <div className="flex gap-2 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 pointer-events-auto">
-                {ZOOM_PRESETS.map((preset) => (
+          {/* Settings (top-right) */}
+          <div className="absolute top-6 right-6 z-20 flex flex-col items-end gap-2 pointer-events-auto">
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              className="w-10 h-10 flex items-center justify-center rounded-full bg-black/40 backdrop-blur-md border border-white/20 active:scale-90 transition"
+            >
+              <Settings className="w-5 h-5 text-white" />
+            </button>
+
+            {showSettings && (
+              <div className="flex flex-col gap-2 bg-black/60 backdrop-blur-md p-2 rounded-xl border border-white/20">
+                {(["16:9", "4:3", "1:1"] as AspectRatio[]).map((ratio) => (
                   <button
-                    key={preset}
-                    onClick={() => applyHardwareZoom(preset)}
-                    className={`w-8 h-8 rounded-full text-xs font-bold transition-all ${
-                      Math.abs(zoom - preset) < 0.1
-                        ? "bg-white text-black scale-105"
-                        : "bg-black/20 text-white hover:bg-white/20"
+                    key={ratio}
+                    onClick={() => {
+                      setAspectRatio(ratio);
+                      setShowSettings(false);
+                    }}
+                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${
+                      aspectRatio === ratio
+                        ? "bg-white text-black"
+                        : "text-white hover:bg-white/20"
                     }`}
                   >
-                    {preset}x
+                    {ratio}
                   </button>
                 ))}
               </div>
+            )}
+          </div>
 
-              <div className="w-full max-w-md mx-auto flex justify-between items-center px-4">
-                <button
-                  onClick={toggleCamera}
-                  className="w-12 h-12 flex items-center justify-center rounded-full border border-white/20 bg-black/40 backdrop-blur-md pointer-events-auto active:scale-90 transition shadow-md"
-                  title="Flip Camera"
-                >
-                  <RefreshCw className="w-5 h-5 text-white" />
-                </button>
+          {/* REC indicator (top-center) */}
+          {isRecording && (
+            <div className="absolute top-6 left-0 right-0 flex justify-center z-20 pointer-events-none">
+              <div className="bg-black/60 backdrop-blur-md px-4 py-1.5 rounded-full border border-red-500/30">
+                <p className="text-xs font-bold text-red-500 animate-pulse tracking-wider">
+                  REC 00:
+                  {recordingSeconds < 10
+                    ? `0${recordingSeconds}`
+                    : recordingSeconds}{" "}
+                  / 01:00
+                </p>
+              </div>
+            </div>
+          )}
 
+          {/* Bottom controls (zoom + action row) */}
+          <div className="absolute bottom-0 left-0 right-0 p-6 pb-12 flex flex-col items-center gap-6 z-10 bg-gradient-to-t from-black/80 via-black/40 to-transparent pointer-events-none">
+            <div className="flex gap-2 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 pointer-events-auto">
+              {ZOOM_PRESETS.map((preset) => (
                 <button
-                  onPointerDown={handlePointerDown}
-                  onPointerMove={handlePointerMove}
-                  onPointerUp={handlePointerUp}
-                  onPointerCancel={handlePointerUp}
-                  className={`w-20 h-20 rounded-full flex items-center justify-center border-[5px] transition-all shadow-2xl pointer-events-auto cursor-pointer ${
-                    isRecording
-                      ? "border-red-500 scale-110"
-                      : "border-white active:scale-90"
+                  key={preset}
+                  onClick={() => applyHardwareZoom(preset)}
+                  className={`w-8 h-8 rounded-full text-xs font-bold transition-all ${
+                    Math.abs(zoom - preset) < 0.1
+                      ? "bg-white text-black scale-105"
+                      : "bg-black/20 text-white hover:bg-white/20"
                   }`}
                 >
-                  <div
-                    className={`transition-all ${
-                      isRecording
-                        ? "w-8 h-8 bg-red-500 rounded-md"
-                        : "w-14 h-14 bg-white rounded-full"
-                    }`}
-                  />
+                  {preset}x
                 </button>
+              ))}
+            </div>
 
-                <button
-                  onClick={() => setIsGalleryOpen(true)}
-                  className="flex items-center gap-3 pointer-events-auto group"
-                >
-                  <div className="text-right hidden sm:block">
-                    <p className="text-white text-base font-black leading-none">
-                      {mediaList.length}
-                    </p>
-                    <p className="text-white/60 text-[9px] font-bold tracking-wider uppercase">
-                      Items
-                    </p>
-                  </div>
-                  <div className="w-12 h-12 rounded-xl border border-white/20 overflow-hidden bg-neutral-800 flex items-center justify-center shadow-md">
-                    {mediaList.length > 0 ? (
-                      mediaList[0].type === "video" ? (
-                        <Video className="w-6 h-6 text-white" />
-                      ) : (
-                        <img
-                          src={mediaList[0].url}
-                          alt="Latest Media"
-                          className="w-full h-full object-cover"
-                        />
-                      )
+            <div className="w-full max-w-md mx-auto flex justify-between items-center px-4">
+              <button
+                onClick={toggleCamera}
+                className="w-12 h-12 flex items-center justify-center rounded-full border border-white/20 bg-black/40 backdrop-blur-md pointer-events-auto active:scale-90 transition shadow-md"
+                title="Flip Camera"
+              >
+                <RefreshCw className="w-5 h-5 text-white" />
+              </button>
+
+              <button
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerUp}
+                className={`w-20 h-20 rounded-full flex items-center justify-center border-[5px] transition-all shadow-2xl pointer-events-auto cursor-pointer ${
+                  isRecording
+                    ? "border-red-500 scale-110"
+                    : "border-white active:scale-90"
+                }`}
+              >
+                <div
+                  className={`transition-all ${
+                    isRecording
+                      ? "w-8 h-8 bg-red-500 rounded-md"
+                      : "w-14 h-14 bg-white rounded-full"
+                  }`}
+                />
+              </button>
+
+              <button
+                onClick={() => setIsGalleryOpen(true)}
+                className="flex items-center gap-3 pointer-events-auto group"
+              >
+                <div className="text-right hidden sm:block">
+                  <p className="text-white text-base font-black leading-none">
+                    {mediaList.length}
+                  </p>
+                  <p className="text-white/60 text-[9px] font-bold tracking-wider uppercase">
+                    Items
+                  </p>
+                </div>
+                <div className="w-12 h-12 rounded-xl border border-white/20 overflow-hidden bg-neutral-800 flex items-center justify-center shadow-md">
+                  {mediaList.length > 0 ? (
+                    mediaList[0].type === "video" ? (
+                      <Video className="w-6 h-6 text-white" />
                     ) : (
-                      <ImageIcon className="w-6 h-6 text-neutral-400" />
-                    )}
-                  </div>
-                </button>
-              </div>
+                      <img
+                        src={mediaList[0].url}
+                        alt="Latest Media"
+                        className="w-full h-full object-cover"
+                      />
+                    )
+                  ) : (
+                    <ImageIcon className="w-6 h-6 text-neutral-400" />
+                  )}
+                </div>
+              </button>
             </div>
           </div>
 
@@ -624,7 +632,7 @@ export default function CameraView() {
               </Drawer.Content>
             </Drawer.Portal>
           </Drawer.Root>
-        </div>
+        </>
       )}
     </div>
   );
