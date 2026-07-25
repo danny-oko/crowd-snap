@@ -181,6 +181,11 @@ export default function CameraView() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    if (facingMode === "user") {
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+    }
+
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
     canvas.toBlob(
@@ -325,6 +330,9 @@ export default function CameraView() {
     stream?.getVideoTracks()[0]?.getCapabilities?.() as any
   )?.zoom;
 
+  const mirrorTransform = facingMode === "user" ? "scaleX(-1)" : "scaleX(1)";
+  const zoomTransform = `scale(${isSoftwareZoom ? zoom : 1})`;
+
   return (
     <div className="relative flex flex-col items-center justify-center min-h-screen bg-black text-white select-none touch-none">
       <canvas ref={canvasRef} className="hidden" />
@@ -350,7 +358,7 @@ export default function CameraView() {
             muted
             className="w-full h-full object-cover transition-transform duration-75"
             style={{
-              transform: `scale(${isSoftwareZoom ? zoom : 1})`,
+              transform: `${mirrorTransform} ${zoomTransform}`,
             }}
           />
 
