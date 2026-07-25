@@ -22,6 +22,13 @@ type MediaItem = {
 
 type AspectRatio = "16:9" | "4:3" | "1:1";
 
+// width / height, portrait orientation
+const ASPECT_RATIOS: Record<AspectRatio, number> = {
+  "16:9": 9 / 16,
+  "4:3": 3 / 4,
+  "1:1": 1,
+};
+
 export default function CameraView() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -178,6 +185,10 @@ export default function CameraView() {
     }
   };
 
+  const isSoftwareZoom = !(
+    stream?.getVideoTracks()[0]?.getCapabilities?.() as any
+  )?.zoom;
+
   const takePhoto = async () => {
     if (!videoRef.current) return;
 
@@ -185,9 +196,38 @@ export default function CameraView() {
     setTimeout(() => setIsFlashing(false), 150);
 
     const video = videoRef.current;
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (!vw || !vh) return;
+
+    const targetRatio = ASPECT_RATIOS[aspectRatio]; // width / height
+
+    // Center-crop the frame to the chosen ratio (matches object-cover preview).
+    let sw: number;
+    let sh: number;
+    if (vw / vh > targetRatio) {
+      sh = vh; // frame wider than target -> trim sides
+      sw = vh * targetRatio;
+    } else {
+      sw = vw; // frame taller than target -> trim top/bottom
+      sh = vw / targetRatio;
+    }
+    let sx = (vw - sw) / 2;
+    let sy = (vh - sh) / 2;
+
+    // If zoom is faked in CSS (no hardware zoom), crop further to match preview.
+    if (isSoftwareZoom && zoom > 1) {
+      const zw = sw / zoom;
+      const zh = sh / zoom;
+      sx += (sw - zw) / 2;
+      sy += (sh - zh) / 2;
+      sw = zw;
+      sh = zh;
+    }
+
     const canvas = canvasRef.current || document.createElement("canvas");
-    canvas.width = video.videoWidth || 1080;
-    canvas.height = video.videoHeight || 1920;
+    canvas.width = Math.round(sw);
+    canvas.height = Math.round(sh);
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
@@ -197,7 +237,17 @@ export default function CameraView() {
       ctx.scale(-1, 1);
     }
 
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(
+      video,
+      sx,
+      sy,
+      sw,
+      sh, // source crop
+      0,
+      0,
+      canvas.width,
+      canvas.height, // destination
+    );
 
     canvas.toBlob(
       async (compressedBlob) => {
@@ -348,19 +398,15 @@ export default function CameraView() {
   const getAspectRatioClass = () => {
     switch (aspectRatio) {
       case "16:9":
-        return "w-full h-[100dvh]";
+        return "w-full aspect-[9/16]";
       case "4:3":
         return "w-full aspect-[3/4]";
       case "1:1":
         return "w-full aspect-square";
       default:
-        return "w-full h-[100dvh]";
+        return "w-full aspect-[9/16]";
     }
   };
-
-  const isSoftwareZoom = !(
-    stream?.getVideoTracks()[0]?.getCapabilities?.() as any
-  )?.zoom;
 
   const mirrorTransform = facingMode === "user" ? "scaleX(-1)" : "scaleX(1)";
   const zoomTransform = `scale(${isSoftwareZoom ? zoom : 1})`;
