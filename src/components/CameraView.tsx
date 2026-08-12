@@ -116,11 +116,26 @@ export default function CameraView() {
         if (videoTrack && "getCapabilities" in videoTrack) {
           const capabilities = videoTrack.getCapabilities() as any;
           if (capabilities.zoom) {
-            setZoomCap({
-              min: capabilities.zoom.min || 1,
-              max: capabilities.zoom.max || 5,
-              step: capabilities.zoom.step || 0.1,
-            });
+            const min = capabilities.zoom.min ?? 1;
+            const max = capabilities.zoom.max ?? 5;
+            const step = capabilities.zoom.step || 0.1;
+            setZoomCap({ min, max, step });
+
+            // Some devices default multi-lens back cameras to a wide/ultra-wide
+            // lens (e.g. zoom 0.5) even though our UI defaults to showing "1x".
+            // Force the hardware to true 1x so the displayed zoom is accurate.
+            if (min <= 1 && max >= 1) {
+              await videoTrack
+                .applyConstraints({ advanced: [{ zoom: 1 }] } as any)
+                .catch(() => {});
+              setZoom(1);
+            } else {
+              const settings = videoTrack.getSettings() as any;
+              setZoom(settings.zoom ?? min);
+            }
+          } else {
+            setZoomCap({ min: 1, max: 1, step: 1 });
+            setZoom(1);
           }
         }
       } catch (err) {
@@ -202,20 +217,18 @@ export default function CameraView() {
 
     const targetRatio = ASPECT_RATIOS[aspectRatio]; // width / height
 
-    // Center-crop the frame to the chosen ratio (matches object-cover preview).
     let sw: number;
     let sh: number;
     if (vw / vh > targetRatio) {
-      sh = vh; // frame wider than target -> trim sides
+      sh = vh;
       sw = vh * targetRatio;
     } else {
-      sw = vw; // frame taller than target -> trim top/bottom
+      sw = vw;
       sh = vw / targetRatio;
     }
     let sx = (vw - sw) / 2;
     let sy = (vh - sh) / 2;
 
-    // If zoom is faked in CSS (no hardware zoom), crop further to match preview.
     if (isSoftwareZoom && zoom > 1) {
       const zw = sw / zoom;
       const zh = sh / zoom;
@@ -237,17 +250,7 @@ export default function CameraView() {
       ctx.scale(-1, 1);
     }
 
-    ctx.drawImage(
-      video,
-      sx,
-      sy,
-      sw,
-      sh, // source crop
-      0,
-      0,
-      canvas.width,
-      canvas.height, // destination
-    );
+    ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
 
     canvas.toBlob(
       async (compressedBlob) => {
