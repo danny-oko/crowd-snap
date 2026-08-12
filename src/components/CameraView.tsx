@@ -8,8 +8,6 @@ import {
   Download,
   Settings,
   X,
-  ChevronLeft,
-  ChevronRight,
   Trash2,
 } from "lucide-react";
 import { Drawer } from "vaul";
@@ -54,6 +52,9 @@ export default function CameraView() {
 
   const [mediaList, setMediaList] = useState<MediaItem[]>([]);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const previewScrollRef = useRef<HTMLDivElement>(null);
+  const previewVideoRefs = useRef<(HTMLVideoElement | null)[]>([]);
 
   const [deviceId] = useState<string>(() => {
     if (typeof window === "undefined") return "";
@@ -425,30 +426,57 @@ export default function CameraView() {
 
   const closePreview = () => setPreviewIndex(null);
 
-  const showPrevPreview = useCallback(() => {
-    setPreviewIndex((prev) =>
-      prev === null ? null : (prev - 1 + mediaList.length) % mediaList.length,
-    );
-  }, [mediaList.length]);
-
-  const showNextPreview = useCallback(() => {
-    setPreviewIndex((prev) =>
-      prev === null ? null : (prev + 1) % mediaList.length,
-    );
-  }, [mediaList.length]);
+  const scrollToPreviewItem = useCallback((index: number) => {
+    const el = previewScrollRef.current?.children[index] as
+      | HTMLElement
+      | undefined;
+    el?.scrollIntoView({ behavior: "smooth", inline: "center" });
+  }, []);
 
   useEffect(() => {
     if (previewIndex === null) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") closePreview();
-      else if (e.key === "ArrowLeft") showPrevPreview();
-      else if (e.key === "ArrowRight") showNextPreview();
+      else if (e.key === "ArrowLeft")
+        scrollToPreviewItem(Math.max(0, activeIndex - 1));
+      else if (e.key === "ArrowRight")
+        scrollToPreviewItem(Math.min(mediaList.length - 1, activeIndex + 1));
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [previewIndex, showPrevPreview, showNextPreview]);
+  }, [previewIndex, activeIndex, mediaList.length, scrollToPreviewItem]);
+
+  // Jump instantly (no animation) to the tapped item once the preview mounts.
+  useEffect(() => {
+    if (previewIndex === null) return;
+    setActiveIndex(previewIndex);
+    const el = previewScrollRef.current?.children[previewIndex] as
+      | HTMLElement
+      | undefined;
+    el?.scrollIntoView({ behavior: "instant" as ScrollBehavior, inline: "center" });
+  }, [previewIndex]);
+
+  const handlePreviewScroll = () => {
+    const container = previewScrollRef.current;
+    if (!container) return;
+    const index = Math.round(container.scrollLeft / container.clientWidth);
+    setActiveIndex((prev) => (prev === index ? prev : index));
+  };
+
+  // Auto-play only the item currently centered in the scroller.
+  useEffect(() => {
+    if (previewIndex === null) return;
+    previewVideoRefs.current.forEach((video, index) => {
+      if (!video) return;
+      if (index === activeIndex) {
+        video.play().catch(() => {});
+      } else {
+        video.pause();
+      }
+    });
+  }, [activeIndex, previewIndex]);
 
   const handleVideoTap = () => {
     const now = Date.now();
@@ -724,7 +752,7 @@ export default function CameraView() {
             </Drawer.Portal>
           </Drawer.Root>
 
-          {previewIndex !== null && mediaList[previewIndex] && (
+          {previewIndex !== null && mediaList.length > 0 && (
             <div className="fixed inset-0 z-[60] bg-black flex items-center justify-center">
               <button
                 onClick={closePreview}
@@ -734,9 +762,9 @@ export default function CameraView() {
                 <X className="w-5 h-5 text-white" />
               </button>
 
-              {mediaList[previewIndex].isOwner && (
+              {mediaList[activeIndex]?.isOwner && (
                 <button
-                  onClick={() => deleteMedia(mediaList[previewIndex])}
+                  onClick={() => deleteMedia(mediaList[activeIndex])}
                   className="absolute top-6 left-6 z-10 w-10 h-10 flex items-center justify-center rounded-full bg-black/50 hover:bg-red-600 backdrop-blur-md border border-white/20 active:scale-90 transition"
                   title="Delete"
                 >
@@ -744,50 +772,47 @@ export default function CameraView() {
                 </button>
               )}
 
-              {mediaList.length > 1 && (
-                <>
-                  <button
-                    onClick={showPrevPreview}
-                    className="absolute left-2 sm:left-6 z-10 w-10 h-10 flex items-center justify-center rounded-full bg-black/50 backdrop-blur-md border border-white/20 active:scale-90 transition"
-                    title="Previous"
-                  >
-                    <ChevronLeft className="w-6 h-6 text-white" />
-                  </button>
-                  <button
-                    onClick={showNextPreview}
-                    className="absolute right-2 sm:right-6 z-10 w-10 h-10 flex items-center justify-center rounded-full bg-black/50 backdrop-blur-md border border-white/20 active:scale-90 transition"
-                    title="Next"
-                  >
-                    <ChevronRight className="w-6 h-6 text-white" />
-                  </button>
-                </>
-              )}
-
               <div className="absolute bottom-6 left-0 right-0 flex justify-center z-10 pointer-events-none">
                 <div className="bg-black/50 backdrop-blur-md px-3 py-1 rounded-full border border-white/10">
                   <p className="text-xs font-bold text-white/80">
-                    {previewIndex + 1} / {mediaList.length}
+                    {activeIndex + 1} / {mediaList.length}
                   </p>
                 </div>
               </div>
 
-              <div className="w-full h-full flex items-center justify-center p-4 sm:p-10">
-                {mediaList[previewIndex].type === "video" ? (
-                  <video
-                    key={mediaList[previewIndex].url}
-                    src={mediaList[previewIndex].url}
-                    className="max-w-full max-h-full"
-                    controls
-                    autoPlay
-                    playsInline
-                  />
-                ) : (
-                  <img
-                    src={mediaList[previewIndex].url}
-                    alt="Preview"
-                    className="max-w-full max-h-full object-contain"
-                  />
-                )}
+              <div
+                ref={previewScrollRef}
+                onScroll={handlePreviewScroll}
+                className="w-full h-full flex overflow-x-auto snap-x snap-mandatory [&::-webkit-scrollbar]:hidden"
+                style={{ scrollbarWidth: "none" }}
+              >
+                {mediaList.map((item, index) => (
+                  <div
+                    key={item.key || index}
+                    className="w-full h-full flex-none snap-center flex items-center justify-center p-4 sm:p-10"
+                  >
+                    {item.type === "video" ? (
+                      <video
+                        ref={(el) => {
+                          previewVideoRefs.current[index] = el;
+                          if (el) el.muted = true;
+                        }}
+                        src={item.url}
+                        className="max-w-full max-h-full"
+                        controls
+                        loop
+                        playsInline
+                        preload="metadata"
+                      />
+                    ) : (
+                      <img
+                        src={item.url}
+                        alt={`Preview ${index + 1}`}
+                        className="max-w-full max-h-full object-contain"
+                      />
+                    )}
+                  </div>
+                ))}
               </div>
             </div>
           )}
