@@ -7,6 +7,9 @@ import {
   Video,
   Download,
   Settings,
+  X,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { Drawer } from "vaul";
 import { uploadToR2Action } from "@/app/actions/upload";
@@ -47,6 +50,7 @@ export default function CameraView() {
   const [showSettings, setShowSettings] = useState(false);
 
   const [mediaList, setMediaList] = useState<MediaItem[]>([]);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 
   const [isFlashing, setIsFlashing] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -390,6 +394,33 @@ export default function CameraView() {
     setFacingMode((prev) => (prev === "user" ? "environment" : "user"));
   };
 
+  const closePreview = () => setPreviewIndex(null);
+
+  const showPrevPreview = useCallback(() => {
+    setPreviewIndex((prev) =>
+      prev === null ? null : (prev - 1 + mediaList.length) % mediaList.length,
+    );
+  }, [mediaList.length]);
+
+  const showNextPreview = useCallback(() => {
+    setPreviewIndex((prev) =>
+      prev === null ? null : (prev + 1) % mediaList.length,
+    );
+  }, [mediaList.length]);
+
+  useEffect(() => {
+    if (previewIndex === null) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") closePreview();
+      else if (e.key === "ArrowLeft") showPrevPreview();
+      else if (e.key === "ArrowRight") showNextPreview();
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [previewIndex, showPrevPreview, showNextPreview]);
+
   const handleVideoTap = () => {
     const now = Date.now();
     if (now - lastTapRef.current < 300) {
@@ -597,16 +628,30 @@ export default function CameraView() {
                     {mediaList.map((item, index) => (
                       <div
                         key={item.key || index}
-                        className="group aspect-square bg-neutral-900 rounded-xl overflow-hidden border border-neutral-800 shadow-sm relative"
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => setPreviewIndex(index)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ")
+                            setPreviewIndex(index);
+                        }}
+                        className="group aspect-square bg-neutral-900 rounded-xl overflow-hidden border border-neutral-800 shadow-sm relative text-left cursor-pointer"
                       >
                         {item.type === "video" ? (
-                          <video
-                            src={item.url}
-                            className="w-full h-full object-cover"
-                            controls
-                            playsInline
-                            preload="metadata"
-                          />
+                          <>
+                            <video
+                              src={item.url}
+                              className="w-full h-full object-cover pointer-events-none"
+                              muted
+                              playsInline
+                              preload="metadata"
+                            />
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+                              <div className="w-9 h-9 rounded-full bg-black/60 backdrop-blur-md flex items-center justify-center border border-white/20">
+                                <Video className="w-4 h-4 text-white" />
+                              </div>
+                            </div>
+                          </>
                         ) : (
                           <img
                             src={item.url}
@@ -616,7 +661,8 @@ export default function CameraView() {
                         )}
 
                         <button
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             const ext = item.type === "video" ? "mp4" : "webp";
                             triggerDownload(
                               item.url,
