@@ -10,17 +10,20 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  Trash2,
 } from "lucide-react";
 import { Drawer } from "vaul";
-import { uploadToR2Action } from "@/app/actions/upload";
+import { uploadToR2Action, deleteFromR2Action } from "@/app/actions/upload";
 
 const ZOOM_PRESETS = [0.5, 1, 1.5, 2, 5];
+const DEVICE_ID_STORAGE_KEY = "crowd-snap-device-id";
 
 type MediaItem = {
   url: string;
   type: "image" | "video";
   key?: string;
   blob?: Blob;
+  isOwner?: boolean;
 };
 
 type AspectRatio = "16:9" | "4:3" | "1:1";
@@ -52,6 +55,16 @@ export default function CameraView() {
   const [mediaList, setMediaList] = useState<MediaItem[]>([]);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 
+  const [deviceId] = useState<string>(() => {
+    if (typeof window === "undefined") return "";
+    let id = window.localStorage.getItem(DEVICE_ID_STORAGE_KEY);
+    if (!id) {
+      id = crypto.randomUUID();
+      window.localStorage.setItem(DEVICE_ID_STORAGE_KEY, id);
+    }
+    return id;
+  });
+
   const [isFlashing, setIsFlashing] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
@@ -73,7 +86,9 @@ export default function CameraView() {
 
   const fetchBucketItems = useCallback(async () => {
     try {
-      const res = await fetch("/api/media");
+      const res = await fetch("/api/media", {
+        headers: deviceId ? { "x-device-id": deviceId } : undefined,
+      });
       if (res.ok) {
         const data = await res.json();
         if (data.items) {
@@ -83,7 +98,7 @@ export default function CameraView() {
     } catch (err) {
       console.error("Failed to sync bucket media:", err);
     }
-  }, []);
+  }, [deviceId]);
 
   useEffect(() => {
     fetchBucketItems();
@@ -182,6 +197,19 @@ export default function CameraView() {
     document.body.removeChild(a);
   };
 
+  const deleteMedia = async (item: MediaItem) => {
+    if (!item.key || !deviceId || !item.isOwner) return;
+    if (!window.confirm("Delete this item? This can't be undone.")) return;
+
+    const res = await deleteFromR2Action(item.key, deviceId);
+    if (res.success) {
+      setMediaList((prev) => prev.filter((m) => m.key !== item.key));
+      setPreviewIndex(null);
+    } else {
+      console.error("Delete failed:", res.error);
+    }
+  };
+
   const uploadToR2 = async (
     blob: Blob,
     fileName: string,
@@ -191,6 +219,7 @@ export default function CameraView() {
       const formData = new FormData();
       const file = new File([blob], fileName, { type: contentType });
       formData.append("file", file);
+      formData.append("deviceId", deviceId);
 
       const res = await uploadToR2Action(formData);
       if (!res.success) {
@@ -674,6 +703,19 @@ export default function CameraView() {
                         >
                           <Download className="w-4 h-4" />
                         </button>
+
+                        {item.isOwner && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteMedia(item);
+                            }}
+                            className="absolute bottom-2 left-2 w-8 h-8 rounded-full bg-black/70 hover:bg-red-600 text-white flex items-center justify-center backdrop-blur-md transition border border-white/20 active:scale-90"
+                            title="Delete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -681,6 +723,74 @@ export default function CameraView() {
               </Drawer.Content>
             </Drawer.Portal>
           </Drawer.Root>
+
+          {previewIndex !== null && mediaList[previewIndex] && (
+            <div className="fixed inset-0 z-[60] bg-black flex items-center justify-center">
+              <button
+                onClick={closePreview}
+                className="absolute top-6 right-6 z-10 w-10 h-10 flex items-center justify-center rounded-full bg-black/50 backdrop-blur-md border border-white/20 active:scale-90 transition"
+                title="Close"
+              >
+                <X className="w-5 h-5 text-white" />
+              </button>
+
+              {mediaList[previewIndex].isOwner && (
+                <button
+                  onClick={() => deleteMedia(mediaList[previewIndex])}
+                  className="absolute top-6 left-6 z-10 w-10 h-10 flex items-center justify-center rounded-full bg-black/50 hover:bg-red-600 backdrop-blur-md border border-white/20 active:scale-90 transition"
+                  title="Delete"
+                >
+                  <Trash2 className="w-5 h-5 text-white" />
+                </button>
+              )}
+
+              {mediaList.length > 1 && (
+                <>
+                  <button
+                    onClick={showPrevPreview}
+                    className="absolute left-2 sm:left-6 z-10 w-10 h-10 flex items-center justify-center rounded-full bg-black/50 backdrop-blur-md border border-white/20 active:scale-90 transition"
+                    title="Previous"
+                  >
+                    <ChevronLeft className="w-6 h-6 text-white" />
+                  </button>
+                  <button
+                    onClick={showNextPreview}
+                    className="absolute right-2 sm:right-6 z-10 w-10 h-10 flex items-center justify-center rounded-full bg-black/50 backdrop-blur-md border border-white/20 active:scale-90 transition"
+                    title="Next"
+                  >
+                    <ChevronRight className="w-6 h-6 text-white" />
+                  </button>
+                </>
+              )}
+
+              <div className="absolute bottom-6 left-0 right-0 flex justify-center z-10 pointer-events-none">
+                <div className="bg-black/50 backdrop-blur-md px-3 py-1 rounded-full border border-white/10">
+                  <p className="text-xs font-bold text-white/80">
+                    {previewIndex + 1} / {mediaList.length}
+                  </p>
+                </div>
+              </div>
+
+              <div className="w-full h-full flex items-center justify-center p-4 sm:p-10">
+                {mediaList[previewIndex].type === "video" ? (
+                  <video
+                    key={mediaList[previewIndex].url}
+                    src={mediaList[previewIndex].url}
+                    className="max-w-full max-h-full"
+                    controls
+                    autoPlay
+                    playsInline
+                  />
+                ) : (
+                  <img
+                    src={mediaList[previewIndex].url}
+                    alt="Preview"
+                    className="max-w-full max-h-full object-contain"
+                  />
+                )}
+              </div>
+            </div>
+          )}
         </>
       )}
     </div>
