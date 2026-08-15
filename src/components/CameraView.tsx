@@ -157,7 +157,15 @@ export default function CameraView() {
               setZoom(settings.zoom ?? min);
             }
           } else {
-            setZoomCap({ min: 1, max: 1, step: 1 });
+            // No native zoom support: allow the same range as our zoom-in
+            // presets so applyHardwareZoom's clamp doesn't collapse every
+            // preset above 1x back down to 1x. takePhoto()'s isSoftwareZoom
+            // branch does the actual zooming by cropping the captured frame.
+            setZoomCap({
+              min: 1,
+              max: Math.max(...ZOOM_PRESETS, 1),
+              step: 0.1,
+            });
             setZoom(1);
           }
         }
@@ -650,19 +658,26 @@ export default function CameraView() {
           {/* Bottom controls (zoom + action row) */}
           <div className="absolute bottom-0 left-0 right-0 p-6 pb-12 flex flex-col items-center gap-6 z-10 bg-gradient-to-t from-black/80 via-black/40 to-transparent pointer-events-none">
             <div className="flex gap-2 bg-black/40 backdrop-blur-md px-3 py-1.5 rounded-full border border-white/10 pointer-events-auto">
-              {ZOOM_PRESETS.map((preset) => (
+              {ZOOM_PRESETS.map((preset) => {
+                const reachable =
+                  preset >= zoomCap.min && preset <= zoomCap.max;
+                return (
                 <button
                   key={preset}
+                  disabled={!reachable}
                   onClick={() => applyHardwareZoom(preset)}
                   className={`w-8 h-8 rounded-full text-xs font-bold transition-all ${
-                    Math.abs(zoom - preset) < 0.1
+                    !reachable
+                      ? "bg-black/10 text-white/30 cursor-not-allowed"
+                      : Math.abs(zoom - preset) < 0.1
                       ? "bg-white text-black scale-105"
                       : "bg-black/20 text-white hover:bg-white/20"
                   }`}
                 >
                   {preset}x
                 </button>
-              ))}
+                );
+              })}
             </div>
 
             <div className="w-full max-w-md mx-auto flex justify-between items-center px-4">
