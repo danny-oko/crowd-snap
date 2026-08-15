@@ -1,19 +1,15 @@
 "use server";
 
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
+import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
 import { hashDeviceId } from "@/lib/mediaOwner";
-
-const s3 = new S3Client({
-  region: "auto",
-  endpoint: process.env.R2_ENDPOINT,
-  credentials: {
-    accessKeyId: process.env.R2_ACCESS_KEY_ID || "",
-    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || "",
-  },
-  forcePathStyle: true,
-});
-
-const FOLDER_PREFIX = "events/enh-amar-bday/";
+import {
+  s3,
+  FOLDER_PREFIX,
+  BUCKETS,
+  WRITE_ORDER,
+  isBucketConfigured,
+  type BucketId,
+} from "@/lib/r2";
 
 export async function uploadToR2Action(formData: FormData) {
   try {
@@ -30,26 +26,49 @@ export async function uploadToR2Action(formData: FormData) {
     const ownerTag = hashDeviceId(deviceId);
     const key = `${FOLDER_PREFIX}${ownerTag}__${file.name}`;
 
-    const command = new PutObjectCommand({
-      Bucket: process.env.R2_BUCKET_NAME,
-      Key: key,
-      Body: buffer,
-      ContentType: file.type,
-    });
+    let lastError: unknown = null;
+    let uploadedTo: BucketId | null = null;
 
-    await s3.send(command);
+    for (const bucketId of WRITE_ORDER) {
+      if (!isBucketConfigured(bucketId)) continue;
 
-    const publicDomain = process.env.NEXT_PUBLIC_R2_PUBLIC_URL || "";
-    const publicUrl = `${publicDomain}/${key}`;
+      try {
+        await s3.send(
+          new PutObjectCommand({
+            Bucket: BUCKETS[bucketId].name,
+            Key: key,
+            Body: buffer,
+            ContentType: file.type,
+          }),
+        );
+        uploadedTo = bucketId;
+        break;
+      } catch (err) {
+        console.error(`R2 upload to "${bucketId}" bucket failed:`, err);
+        lastError = err;
+      }
+    }
 
-    return { success: true, publicUrl };
+    if (!uploadedTo) {
+      throw lastError instanceof Error
+        ? lastError
+        : new Error("All configured R2 buckets rejected the upload");
+    }
+
+    const publicUrl = `${BUCKETS[uploadedTo].publicUrl}/${key}`;
+
+    return { success: true, publicUrl, bucket: uploadedTo };
   } catch (error: any) {
     console.error("R2 Upload Action Error:", error);
     return { success: false, error: error.message };
   }
 }
 
-export async function deleteFromR2Action(key: string, deviceId: string) {
+export async function deleteFromR2Action(
+  key: string,
+  deviceId: string,
+  bucket: BucketId = "primary",
+) {
   try {
     if (!key || !deviceId) {
       return { success: false, error: "Missing key or device id" };
@@ -64,9 +83,13 @@ export async function deleteFromR2Action(key: string, deviceId: string) {
       return { success: false, error: "You can only delete media you captured" };
     }
 
+    if (!isBucketConfigured(bucket)) {
+      return { success: false, error: "Unknown storage bucket" };
+    }
+
     await s3.send(
       new DeleteObjectCommand({
-        Bucket: process.env.R2_BUCKET_NAME,
+        Bucket: BUCKETS[bucket].name,
         Key: key,
       }),
     );

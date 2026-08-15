@@ -20,6 +20,7 @@ type MediaItem = {
   url: string;
   type: "image" | "video";
   key?: string;
+  bucket?: "primary" | "backup";
   blob?: Blob;
   isOwner?: boolean;
 };
@@ -202,7 +203,11 @@ export default function CameraView() {
     if (!item.key || !deviceId || !item.isOwner) return;
     if (!window.confirm("Delete this item? This can't be undone.")) return;
 
-    const res = await deleteFromR2Action(item.key, deviceId);
+    const res = await deleteFromR2Action(
+      item.key,
+      deviceId,
+      item.bucket || "primary",
+    );
     if (res.success) {
       setMediaList((prev) => prev.filter((m) => m.key !== item.key));
       setPreviewIndex(null);
@@ -325,16 +330,19 @@ export default function CameraView() {
       };
 
       mediaRecorder.onstop = async () => {
+        setIsRecording(false);
+        setRecordingSeconds(0);
+        if (recordTimerRef.current) {
+          clearInterval(recordTimerRef.current);
+          recordTimerRef.current = null;
+        }
+
         const finalMime = mimeType || "video/mp4";
         const ext = finalMime.includes("mp4") ? "mp4" : "webm";
         const videoBlob = new Blob(videoChunksRef.current, { type: finalMime });
         const fileName = `video-${Date.now()}.${ext}`;
 
         await uploadToR2(videoBlob, fileName, finalMime);
-
-        setIsRecording(false);
-        setRecordingSeconds(0);
-        if (recordTimerRef.current) clearInterval(recordTimerRef.current);
       };
 
       mediaRecorder.start(100);
