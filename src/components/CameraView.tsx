@@ -429,7 +429,7 @@ export default function CameraView() {
   };
 
   const handlePointerMove = (e: React.PointerEvent) => {
-    if (!isRecording) return;
+    if (mediaRecorderRef.current?.state !== "recording") return;
     const dragDistance = pointerStartYRef.current - e.clientY;
     const zoomFactor = dragDistance / 150;
     const targetZoom = initialZoomOnPointerRef.current + zoomFactor;
@@ -442,11 +442,19 @@ export default function CameraView() {
       holdTimerRef.current = null;
     }
 
-    const pressDuration = Date.now() - pressStartTimeRef.current;
-
-    if (isRecording) {
+    // Check the recorder's own state rather than the `isRecording` React
+    // state: startRecording() runs inside a setTimeout, so there's a brief
+    // window right after the hold threshold fires where the recorder is
+    // already running but the component hasn't re-rendered with
+    // isRecording=true yet. Releasing in that window would read a stale
+    // closure and skip stopRecording() entirely, leaving it running.
+    if (mediaRecorderRef.current?.state === "recording") {
       stopRecording();
-    } else if (pressDuration < 200) {
+      return;
+    }
+
+    const pressDuration = Date.now() - pressStartTimeRef.current;
+    if (pressDuration < 200) {
       takePhoto();
     }
   };
