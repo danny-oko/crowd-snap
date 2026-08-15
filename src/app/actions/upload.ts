@@ -57,7 +57,7 @@ export async function uploadToR2Action(formData: FormData) {
 
     const publicUrl = `${BUCKETS[uploadedTo].publicUrl}/${key}`;
 
-    return { success: true, publicUrl, bucket: uploadedTo };
+    return { success: true, publicUrl, key, bucket: uploadedTo };
   } catch (error: any) {
     console.error("R2 Upload Action Error:", error);
     return { success: false, error: error.message };

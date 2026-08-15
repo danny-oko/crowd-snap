@@ -85,6 +85,8 @@ export default function CameraView() {
   const pointerStartYRef = useRef<number>(0);
   const initialZoomOnPointerRef = useRef<number>(1);
   const initialPinchDistRef = useRef<number | null>(null);
+  const zoomFrameRef = useRef<number | null>(null);
+  const pendingZoomRef = useRef<number | null>(null);
 
   const fetchBucketItems = useCallback(async () => {
     try {
@@ -190,6 +192,34 @@ export default function CameraView() {
     [stream, zoomCap],
   );
 
+  // Pointer/touch move events can fire far faster than the display refreshes
+  // (especially high-frequency touch reporting), and each one was triggering
+  // a full re-render plus a hardware applyConstraints() call. Coalesce to at
+  // most one zoom commit per animation frame so small finger movements don't
+  // hammer the camera pipeline and cause visible preview stutter.
+  const queueZoomUpdate = useCallback(
+    (targetZoom: number) => {
+      pendingZoomRef.current = targetZoom;
+      if (zoomFrameRef.current !== null) return;
+      zoomFrameRef.current = requestAnimationFrame(() => {
+        zoomFrameRef.current = null;
+        if (pendingZoomRef.current !== null) {
+          applyHardwareZoom(pendingZoomRef.current);
+          pendingZoomRef.current = null;
+        }
+      });
+    },
+    [applyHardwareZoom],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (zoomFrameRef.current !== null) {
+        cancelAnimationFrame(zoomFrameRef.current);
+      }
+    };
+  }, []);
+
   const triggerDownload = (url: string, filename: string) => {
     const a = document.createElement("a");
     a.href = url;
@@ -231,7 +261,23 @@ export default function CameraView() {
       if (!res.success) {
         throw new Error(res.error);
       }
-      fetchBucketItems();
+      if (!res.publicUrl) {
+        throw new Error("Upload succeeded without a URL");
+      }
+
+      // Show the new capture immediately instead of waiting on a full
+      // bucket re-list, which gets slower the more the event fills up and
+      // was the main source of lag right after taking a photo/video.
+      setMediaList((prev) => [
+        {
+          url: res.publicUrl,
+          type: contentType.startsWith("video") ? "video" : "image",
+          key: res.key,
+          bucket: res.bucket,
+          isOwner: true,
+        },
+        ...prev,
+      ]);
       return res.publicUrl;
     } catch (err) {
       console.error("R2 Upload error:", err);
@@ -387,7 +433,7 @@ export default function CameraView() {
     const dragDistance = pointerStartYRef.current - e.clientY;
     const zoomFactor = dragDistance / 150;
     const targetZoom = initialZoomOnPointerRef.current + zoomFactor;
-    applyHardwareZoom(targetZoom);
+    queueZoomUpdate(targetZoom);
   };
 
   const handlePointerUp = (e: React.PointerEvent) => {
@@ -418,7 +464,7 @@ export default function CameraView() {
         initialPinchDistRef.current = dist;
       } else {
         const factor = dist / initialPinchDistRef.current;
-        applyHardwareZoom(zoom * factor);
+        queueZoomUpdate(zoom * factor);
         initialPinchDistRef.current = dist;
       }
     }
