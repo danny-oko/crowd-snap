@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import {
   RefreshCw,
   Image as ImageIcon,
+  ImagePlus,
   Video,
   Download,
   Settings,
@@ -37,6 +38,7 @@ const ASPECT_RATIOS: Record<AspectRatio, number> = {
 export default function CameraView() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const videoChunksRef = useRef<Blob[]>([]);
   const recordTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -290,6 +292,23 @@ export default function CameraView() {
     } catch (err) {
       console.error("R2 Upload error:", err);
       return null;
+    }
+  };
+
+  const handleFilesPicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+
+    for (const file of files) {
+      const isVideo = file.type.startsWith("video");
+      const contentType =
+        file.type || (isVideo ? "video/mp4" : "image/jpeg");
+      const extMatch = file.name.match(/\.([a-zA-Z0-9]+)$/);
+      const ext = extMatch ? extMatch[1] : isVideo ? "mp4" : "jpg";
+      const uniqueSuffix = Math.random().toString(36).slice(2, 8);
+      const fileName = `${isVideo ? "video" : "photo"}-${Date.now()}-${uniqueSuffix}.${ext}`;
+
+      await uploadToR2(file, fileName, contentType);
     }
   };
 
@@ -575,6 +594,14 @@ export default function CameraView() {
   return (
     <div className="fixed inset-0 flex flex-col items-center justify-center bg-black text-white select-none touch-none overflow-hidden">
       <canvas ref={canvasRef} className="hidden" />
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*,video/*"
+        multiple
+        onChange={handleFilesPicked}
+        className="hidden"
+      />
 
       {error ? (
         <div className="text-center text-red-500 max-w-sm font-medium z-20">
@@ -608,6 +635,17 @@ export default function CameraView() {
           </div>
 
           {/* Overlays — anchored to the full screen, so they never shift with the ratio */}
+
+          {/* Upload from library (top-left) */}
+          <div className="absolute top-6 left-6 z-20 pointer-events-auto">
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="w-10 h-10 flex items-center justify-center rounded-full bg-black/40 backdrop-blur-md border border-white/20 active:scale-90 transition"
+              title="Upload from library"
+            >
+              <ImagePlus className="w-5 h-5 text-white" />
+            </button>
+          </div>
 
           {/* Settings (top-right) */}
           <div className="absolute top-6 right-6 z-20 flex flex-col items-end gap-2 pointer-events-auto">
